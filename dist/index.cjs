@@ -27642,7 +27642,7 @@ async function main() {
   const rootDir = resolveRootDir();
   const server = new McpServer({
     name: "search-code-mcp",
-    version: "1.1.0"
+    version: "1.2.0"
   });
   registerTools(server, rootDir);
   const transport = new StdioServerTransport();
