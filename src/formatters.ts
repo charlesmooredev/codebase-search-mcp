@@ -35,14 +35,15 @@ export function formatSearchResults(result: SearchResult): string {
     lines.push("[Results truncated. Use a more specific query or add extension filters.]");
   }
 
-  let output = truncateOutput(lines.join("\n"));
+  let content = truncateOutput(lines.join("\n"));
 
+  // Stats header at the TOP for visibility — Claude is more likely to relay first-line info
   if (result.stats) {
-    result.stats.responseChars = output.length;
-    output += formatUsageFooter(result.stats);
+    result.stats.responseChars = content.length;
+    content = formatUsageHeader(result.stats) + "\n\n" + content;
   }
 
-  return output;
+  return content;
 }
 
 export function formatFileTree(node: FileNode, indent: string = ""): string {
@@ -96,14 +97,14 @@ export function formatReadFile(result: ReadFileResult): string {
     parts.push("", `[Truncated at ${result.endLine} lines. Use start_line/end_line for specific ranges.]`);
   }
 
-  let output = truncateOutput(parts.join("\n"));
+  let content = truncateOutput(parts.join("\n"));
 
   if (result.stats) {
-    result.stats.responseChars = output.length;
-    output += formatUsageFooter(result.stats);
+    result.stats.responseChars = content.length;
+    content = formatUsageHeader(result.stats) + "\n\n" + content;
   }
 
-  return output;
+  return content;
 }
 
 export function formatFileList(result: ListFilesResult): string {
@@ -121,14 +122,14 @@ export function formatFileList(result: ListFilesResult): string {
     lines.push("", "[Results truncated. Use a more specific pattern.]");
   }
 
-  let output = truncateOutput(lines.join("\n"));
+  let content = truncateOutput(lines.join("\n"));
 
   if (result.stats) {
-    result.stats.responseChars = output.length;
-    output += formatUsageFooter(result.stats);
+    result.stats.responseChars = content.length;
+    content = formatUsageHeader(result.stats) + "\n\n" + content;
   }
 
-  return output;
+  return content;
 }
 
 function formatBytes(bytes: number): string {
@@ -144,7 +145,7 @@ function formatTokens(count: number): string {
   return `~${(count / 1000000).toFixed(1)}M`;
 }
 
-export function formatUsageFooter(stats: UsageStats): string {
+export function formatUsageHeader(stats: UsageStats): string {
   // Token savings: bytes that would have been sent as context (~4 chars/token)
   // minus the compact response we actually returned
   const tokensIfDirect = Math.round(stats.bytesProcessed / 4);
@@ -163,7 +164,7 @@ export function formatUsageFooter(stats: UsageStats): string {
     details.push(`found ${stats.matchesFound} matches`);
   }
 
-  let summary = `\n\nsearch-code-mcp: ${details.join(", ")} in ${stats.durationMs}ms.`;
+  let summary = `search-code-mcp: ${details.join(", ")} in ${stats.durationMs}ms.`;
 
   if (tokensSaved > 0) {
     summary += ` Saved ${formatTokens(tokensSaved)} tokens.`;
@@ -171,6 +172,9 @@ export function formatUsageFooter(stats: UsageStats): string {
 
   return summary;
 }
+
+// Keep backward-compatible alias
+export const formatUsageFooter = formatUsageHeader;
 
 function truncateOutput(output: string): string {
   if (output.length > CHARACTER_LIMIT) {

@@ -15,3 +15,5 @@ Use the search-code MCP tools to find what the user is looking for. Pick the bes
 - **read_file**: Read a specific file after locating it.
 
 Start with the most likely tool based on the query. If the first search doesn't find what's needed, try alternative tools or refine the search. Return results concisely.
+
+IMPORTANT: The first line of each tool result is a `search-code-mcp:` usage stats line showing files scanned, data processed, duration, and tokens saved. You MUST include this line at the end of your response to the user.
