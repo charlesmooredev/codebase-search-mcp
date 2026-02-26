@@ -8,6 +8,7 @@ import {
   MAX_FILE_SIZE_BYTES,
   MAX_READ_LINES,
   MAX_SEARCH_RESULTS,
+  SENSITIVE_FILE_PATTERNS,
 } from "./constants.js";
 import { isGitignored, loadGitignore } from "./gitignore.js";
 import type {
@@ -35,6 +36,11 @@ function shouldIgnoreFile(filePath: string): boolean {
 
 function shouldIgnoreDir(dirName: string): boolean {
   return IGNORED_DIRS.has(dirName) || dirName.startsWith(".");
+}
+
+function isSensitiveFile(filePath: string): boolean {
+  const basename = path.basename(filePath).toLowerCase();
+  return SENSITIVE_FILE_PATTERNS.some((p) => basename === p);
 }
 
 interface CollectResult {
@@ -67,6 +73,7 @@ function collectFiles(rootDir: string, extensions?: string[]): CollectResult {
         }
       } else if (entry.isFile()) {
         if (shouldIgnoreFile(fullPath)) continue;
+        if (isSensitiveFile(fullPath)) continue;
         if (isGitignored(rootDir, relativePath)) continue;
 
         // Skip files larger than the size limit
@@ -236,6 +243,7 @@ export function findFile(
         }
       } else if (entry.isFile()) {
         if (shouldIgnoreFile(fullPath)) continue;
+        if (isSensitiveFile(fullPath)) continue;
         if (isGitignored(rootDir, relativePath)) continue;
         filesScanned++;
 
@@ -312,6 +320,7 @@ export function getFileStructure(
       } else if (entry.isFile()) {
         if (
           !shouldIgnoreFile(entry.name) &&
+          !isSensitiveFile(entry.name) &&
           !isGitignored(rootDir, relativePath)
         ) {
           node.children!.push({
@@ -347,6 +356,10 @@ export function readFile(
     absPath !== normalizedRoot
   ) {
     throw new Error("Path traversal denied: path is outside project root");
+  }
+
+  if (isSensitiveFile(absPath)) {
+    throw new Error("Access denied: .env files are excluded for security");
   }
 
   if (!fs.existsSync(absPath)) {
@@ -416,8 +429,8 @@ export function listFiles(
     suppressErrors: true,
   });
 
-  // Post-filter through gitignore
-  const filtered = files.filter((f) => !ig.ignores(f));
+  // Post-filter through gitignore and sensitive file list
+  const filtered = files.filter((f) => !ig.ignores(f) && !isSensitiveFile(f));
 
   const truncated = filtered.length > maxResults;
   const capped = filtered.slice(0, maxResults);

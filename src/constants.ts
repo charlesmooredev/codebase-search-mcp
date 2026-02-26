@@ -39,6 +39,20 @@ export const IGNORED_DIRS = new Set([
   "out",
 ]);
 
+// Sensitive files that must never be read, searched, or returned (security)
+export const SENSITIVE_FILE_PATTERNS: string[] = [
+  ".env",
+  ".env.local",
+  ".env.development",
+  ".env.development.local",
+  ".env.production",
+  ".env.production.local",
+  ".env.staging",
+  ".env.staging.local",
+  ".env.test",
+  ".env.test.local",
+];
+
 // File extensions to ignore in searches
 export const IGNORED_EXTENSIONS = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".bmp",

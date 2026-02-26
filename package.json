@@ -1,6 +1,6 @@
 {
   "name": "search-code-mcp",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "MCP server for Claude Code that searches local codebases efficiently, saving tokens by offloading file traversal",
   "type": "module",
   "main": "dist/index.js",

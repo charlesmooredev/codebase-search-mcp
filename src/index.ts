@@ -25,7 +25,7 @@ async function main(): Promise<void> {
 
   const server = new McpServer({
     name: "search-code-mcp",
-    version: "1.4.0",
+    version: "1.5.0",
   });
 
   registerTools(server, rootDir);
