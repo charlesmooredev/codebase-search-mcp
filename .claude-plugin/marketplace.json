@@ -1,21 +1,13 @@
 {
   "name": "codebase-search",
-  "version": "1.0.0",
-  "description": "MCP tools for efficient codebase searching — saves tokens by offloading file traversal",
   "owner": {
     "name": "charlesmooredev"
   },
   "plugins": [
     {
       "name": "codebase-search",
-      "version": "1.0.0",
-      "description": "Search, find, and read files in your codebase with token-efficient MCP tools",
-      "author": {
-        "name": "charlesmooredev"
-      },
-      "keywords": ["search", "codebase", "mcp", "grep", "find"],
-      "category": "development",
-      "source": "./"
+      "source": "./",
+      "description": "Search, find, and read files in your codebase with token-efficient MCP tools"
     }
   ]
 }
