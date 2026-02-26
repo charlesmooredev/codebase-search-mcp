@@ -1,3 +1,11 @@
+export interface UsageStats {
+  filesScanned: number;
+  bytesProcessed: number;
+  matchesFound: number;
+  responseChars: number;
+  durationMs: number;
+}
+
 export interface SearchMatch {
   file: string;
   lineNumber: number;
@@ -17,6 +25,7 @@ export interface SearchResult {
   totalMatches: number;
   files: FileMatch[];
   truncated: boolean;
+  stats?: UsageStats;
 }
 
 export interface FileNode {
@@ -36,6 +45,7 @@ export interface FoundFile {
 export interface FindFileResult {
   files: FoundFile[];
   totalFound: number;
+  stats?: UsageStats;
 }
 
 export interface ReadFileResult {
@@ -46,6 +56,7 @@ export interface ReadFileResult {
   endLine: number;
   truncated: boolean;
   sizeBytes: number;
+  stats?: UsageStats;
 }
 
 export interface ListFilesResult {
@@ -53,4 +64,5 @@ export interface ListFilesResult {
   files: string[];
   totalFound: number;
   truncated: boolean;
+  stats?: UsageStats;
 }

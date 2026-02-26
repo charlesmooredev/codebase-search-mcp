@@ -1,5 +1,5 @@
 import { CHARACTER_LIMIT } from "./constants.js";
-import type { SearchResult, FileNode, ReadFileResult, ListFilesResult } from "./types.js";
+import type { SearchResult, FileNode, ReadFileResult, ListFilesResult, UsageStats } from "./types.js";
 
 export function formatSearchResults(result: SearchResult): string {
   if (result.totalMatches === 0) {
@@ -35,7 +35,14 @@ export function formatSearchResults(result: SearchResult): string {
     lines.push("[Results truncated. Use a more specific query or add extension filters.]");
   }
 
-  return truncateOutput(lines.join("\n"));
+  let output = truncateOutput(lines.join("\n"));
+
+  if (result.stats) {
+    result.stats.responseChars = output.length;
+    output += formatUsageFooter(result.stats);
+  }
+
+  return output;
 }
 
 export function formatFileTree(node: FileNode, indent: string = ""): string {
@@ -89,7 +96,14 @@ export function formatReadFile(result: ReadFileResult): string {
     parts.push("", `[Truncated at ${result.endLine} lines. Use start_line/end_line for specific ranges.]`);
   }
 
-  return truncateOutput(parts.join("\n"));
+  let output = truncateOutput(parts.join("\n"));
+
+  if (result.stats) {
+    result.stats.responseChars = output.length;
+    output += formatUsageFooter(result.stats);
+  }
+
+  return output;
 }
 
 export function formatFileList(result: ListFilesResult): string {
@@ -107,7 +121,55 @@ export function formatFileList(result: ListFilesResult): string {
     lines.push("", "[Results truncated. Use a more specific pattern.]");
   }
 
-  return truncateOutput(lines.join("\n"));
+  let output = truncateOutput(lines.join("\n"));
+
+  if (result.stats) {
+    result.stats.responseChars = output.length;
+    output += formatUsageFooter(result.stats);
+  }
+
+  return output;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0B";
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function formatTokens(count: number): string {
+  if (count < 1000) return `~${count}`;
+  if (count < 1000000) return `~${(count / 1000).toFixed(1)}K`;
+  return `~${(count / 1000000).toFixed(1)}M`;
+}
+
+export function formatUsageFooter(stats: UsageStats): string {
+  const parts: string[] = [];
+
+  if (stats.filesScanned > 0) {
+    parts.push(`${stats.filesScanned} files scanned`);
+  }
+  if (stats.bytesProcessed > 0) {
+    parts.push(`${formatBytes(stats.bytesProcessed)} processed`);
+  }
+  if (stats.matchesFound > 0) {
+    parts.push(`${stats.matchesFound} matches`);
+  }
+
+  // Token savings: bytes that would have been sent as context (~4 chars/token)
+  // minus the compact response we actually returned
+  const tokensIfDirect = Math.round(stats.bytesProcessed / 4);
+  const tokensReturned = Math.round(stats.responseChars / 4);
+  const tokensSaved = tokensIfDirect - tokensReturned;
+
+  if (tokensSaved > 0) {
+    parts.push(`${formatTokens(tokensSaved)} tokens saved`);
+  }
+
+  parts.push(`${stats.durationMs}ms`);
+
+  return `\n---\n[search-code-mcp] ${parts.join(" | ")}`;
 }
 
 function truncateOutput(output: string): string {

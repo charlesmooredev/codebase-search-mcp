@@ -27076,6 +27076,7 @@ function shouldIgnoreDir(dirName) {
 }
 function collectFiles(rootDir, extensions) {
   const files = [];
+  let bytesProcessed = 0;
   function walk(dir) {
     let entries;
     try {
@@ -27093,9 +27094,11 @@ function collectFiles(rootDir, extensions) {
       } else if (entry.isFile()) {
         if (shouldIgnoreFile(fullPath)) continue;
         if (isGitignored(rootDir, relativePath)) continue;
+        let fileSize;
         try {
           const stat = import_fs2.default.statSync(fullPath);
           if (stat.size > MAX_FILE_SIZE_BYTES) continue;
+          fileSize = stat.size;
         } catch {
           continue;
         }
@@ -27104,11 +27107,12 @@ function collectFiles(rootDir, extensions) {
           if (!extensions.includes(ext)) continue;
         }
         files.push(fullPath);
+        bytesProcessed += fileSize;
       }
     }
   }
   walk(rootDir);
-  return files;
+  return { files, bytesProcessed };
 }
 function searchFile(filePath, pattern, contextLines) {
   let content;
@@ -27140,6 +27144,7 @@ function escapeRegex2(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function searchCodebase(rootDir, query, options = {}) {
+  const startTime = performance.now();
   const {
     contextLines = DEFAULT_CONTEXT_LINES,
     caseSensitive = false,
@@ -27154,7 +27159,7 @@ function searchCodebase(rootDir, query, options = {}) {
   } catch {
     throw new Error(`Invalid regex pattern: ${query}`);
   }
-  const files = collectFiles(rootDir, extensions);
+  const { files, bytesProcessed } = collectFiles(rootDir, extensions);
   const fileMatches = [];
   let totalMatches = 0;
   let truncated = false;
@@ -27174,12 +27179,21 @@ function searchCodebase(rootDir, query, options = {}) {
       totalMatches += matches.length;
     }
   }
-  return { query, totalMatches, files: fileMatches, truncated };
+  const stats = {
+    filesScanned: files.length,
+    bytesProcessed,
+    matchesFound: totalMatches,
+    responseChars: 0,
+    durationMs: Math.round(performance.now() - startTime)
+  };
+  return { query, totalMatches, files: fileMatches, truncated, stats };
 }
 function findFile(rootDir, name, options = {}) {
+  const startTime = performance.now();
   const { exact = false, extensions, maxResults = 20 } = options;
   const lowerName = name.toLowerCase();
   const results = [];
+  let filesScanned = 0;
   function walk(dir) {
     if (results.length >= maxResults) return;
     let entries;
@@ -27199,6 +27213,7 @@ function findFile(rootDir, name, options = {}) {
       } else if (entry.isFile()) {
         if (shouldIgnoreFile(fullPath)) continue;
         if (isGitignored(rootDir, relativePath)) continue;
+        filesScanned++;
         if (extensions && extensions.length > 0) {
           const ext = import_path2.default.extname(entry.name).toLowerCase().replace(".", "");
           if (!extensions.includes(ext)) continue;
@@ -27216,7 +27231,14 @@ function findFile(rootDir, name, options = {}) {
     }
   }
   walk(rootDir);
-  return { files: results, totalFound: results.length };
+  const stats = {
+    filesScanned,
+    bytesProcessed: 0,
+    matchesFound: results.length,
+    responseChars: 0,
+    durationMs: Math.round(performance.now() - startTime)
+  };
+  return { files: results, totalFound: results.length, stats };
 }
 function getFileStructure(rootDir, targetPath = "", maxDepth = 4) {
   const absTarget = targetPath ? import_path2.default.resolve(rootDir, targetPath) : rootDir;
@@ -27258,6 +27280,7 @@ function getFileStructure(rootDir, targetPath = "", maxDepth = 4) {
   return buildTree(absTarget, 0);
 }
 function readFile(rootDir, filePath, startLine, endLine) {
+  const startTime = performance.now();
   const absPath = import_path2.default.resolve(rootDir, filePath);
   const normalizedRoot = import_path2.default.resolve(rootDir);
   if (!absPath.startsWith(normalizedRoot + import_path2.default.sep) && absPath !== normalizedRoot) {
@@ -27282,6 +27305,13 @@ function readFile(rootDir, filePath, startLine, endLine) {
   const end = endLine ? Math.min(totalLines, endLine) : Math.min(totalLines, start + MAX_READ_LINES - 1);
   const selectedLines = allLines.slice(start - 1, end);
   const truncated = !endLine && totalLines > MAX_READ_LINES;
+  const stats = {
+    filesScanned: 1,
+    bytesProcessed: stat.size,
+    matchesFound: 0,
+    responseChars: 0,
+    durationMs: Math.round(performance.now() - startTime)
+  };
   return {
     path: import_path2.default.relative(rootDir, absPath),
     content: selectedLines.join("\n"),
@@ -27289,10 +27319,12 @@ function readFile(rootDir, filePath, startLine, endLine) {
     startLine: start,
     endLine: Math.min(end, totalLines),
     truncated,
-    sizeBytes: stat.size
+    sizeBytes: stat.size,
+    stats
   };
 }
 function listFiles(rootDir, pattern, maxResults = 100) {
+  const startTime = performance.now();
   const ig = loadGitignore(rootDir);
   const ignorePatterns = [...IGNORED_DIRS].map((d) => `**/${d}/**`);
   const files = import_fast_glob.default.sync(pattern, {
@@ -27305,11 +27337,19 @@ function listFiles(rootDir, pattern, maxResults = 100) {
   const filtered = files.filter((f) => !ig.ignores(f));
   const truncated = filtered.length > maxResults;
   const capped = filtered.slice(0, maxResults);
+  const stats = {
+    filesScanned: files.length,
+    bytesProcessed: 0,
+    matchesFound: filtered.length,
+    responseChars: 0,
+    durationMs: Math.round(performance.now() - startTime)
+  };
   return {
     pattern,
     files: capped,
     totalFound: filtered.length,
-    truncated
+    truncated,
+    stats
   };
 }
 
@@ -27343,7 +27383,12 @@ function formatSearchResults(result) {
   if (result.truncated) {
     lines.push("[Results truncated. Use a more specific query or add extension filters.]");
   }
-  return truncateOutput(lines.join("\n"));
+  let output = truncateOutput(lines.join("\n"));
+  if (result.stats) {
+    result.stats.responseChars = output.length;
+    output += formatUsageFooter(result.stats);
+  }
+  return output;
 }
 function formatFileTree(node, indent = "") {
   const lines = [];
@@ -27382,7 +27427,12 @@ function formatReadFile(result) {
   if (result.truncated) {
     parts.push("", `[Truncated at ${result.endLine} lines. Use start_line/end_line for specific ranges.]`);
   }
-  return truncateOutput(parts.join("\n"));
+  let output = truncateOutput(parts.join("\n"));
+  if (result.stats) {
+    result.stats.responseChars = output.length;
+    output += formatUsageFooter(result.stats);
+  }
+  return output;
 }
 function formatFileList(result) {
   if (result.totalFound === 0) {
@@ -27396,7 +27446,45 @@ function formatFileList(result) {
   if (result.truncated) {
     lines.push("", "[Results truncated. Use a more specific pattern.]");
   }
-  return truncateOutput(lines.join("\n"));
+  let output = truncateOutput(lines.join("\n"));
+  if (result.stats) {
+    result.stats.responseChars = output.length;
+    output += formatUsageFooter(result.stats);
+  }
+  return output;
+}
+function formatBytes(bytes) {
+  if (bytes === 0) return "0B";
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+function formatTokens(count) {
+  if (count < 1e3) return `~${count}`;
+  if (count < 1e6) return `~${(count / 1e3).toFixed(1)}K`;
+  return `~${(count / 1e6).toFixed(1)}M`;
+}
+function formatUsageFooter(stats) {
+  const parts = [];
+  if (stats.filesScanned > 0) {
+    parts.push(`${stats.filesScanned} files scanned`);
+  }
+  if (stats.bytesProcessed > 0) {
+    parts.push(`${formatBytes(stats.bytesProcessed)} processed`);
+  }
+  if (stats.matchesFound > 0) {
+    parts.push(`${stats.matchesFound} matches`);
+  }
+  const tokensIfDirect = Math.round(stats.bytesProcessed / 4);
+  const tokensReturned = Math.round(stats.responseChars / 4);
+  const tokensSaved = tokensIfDirect - tokensReturned;
+  if (tokensSaved > 0) {
+    parts.push(`${formatTokens(tokensSaved)} tokens saved`);
+  }
+  parts.push(`${stats.durationMs}ms`);
+  return `
+---
+[search-code-mcp] ${parts.join(" | ")}`;
 }
 function truncateOutput(output) {
   if (output.length > CHARACTER_LIMIT) {
@@ -27451,14 +27539,24 @@ Use this when you know a file's name (or part of it) but not its location.`,
       try {
         const result = findFile(rootDir, name, { exact, extensions, maxResults: max_results });
         if (result.totalFound === 0) {
-          return { content: [{ type: "text", text: `No files found matching: "${name}"` }] };
+          let text2 = `No files found matching: "${name}"`;
+          if (result.stats) {
+            result.stats.responseChars = text2.length;
+            text2 += formatUsageFooter(result.stats);
+          }
+          return { content: [{ type: "text", text: text2 }] };
         }
         const lines = [
           `Found ${result.totalFound} file${result.totalFound !== 1 ? "s" : ""} matching "${name}":`,
           "",
           ...result.files.map((f) => `  ${f.path}  (in ${f.directory})`)
         ];
-        return { content: [{ type: "text", text: lines.join("\n") }] };
+        let text = lines.join("\n");
+        if (result.stats) {
+          result.stats.responseChars = text.length;
+          text += formatUsageFooter(result.stats);
+        }
+        return { content: [{ type: "text", text }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { content: [{ type: "text", text: `Error finding file: ${message}` }], isError: true };

@@ -19,6 +19,7 @@ import type {
   ReadFileResult,
   SearchMatch,
   SearchResult,
+  UsageStats,
 } from "./types.js";
 
 function shouldIgnoreFile(filePath: string): boolean {
@@ -36,8 +37,14 @@ function shouldIgnoreDir(dirName: string): boolean {
   return IGNORED_DIRS.has(dirName) || dirName.startsWith(".");
 }
 
-function collectFiles(rootDir: string, extensions?: string[]): string[] {
+interface CollectResult {
+  files: string[];
+  bytesProcessed: number;
+}
+
+function collectFiles(rootDir: string, extensions?: string[]): CollectResult {
   const files: string[] = [];
+  let bytesProcessed = 0;
 
   function walk(dir: string): void {
     let entries: fs.Dirent[];
@@ -63,9 +70,11 @@ function collectFiles(rootDir: string, extensions?: string[]): string[] {
         if (isGitignored(rootDir, relativePath)) continue;
 
         // Skip files larger than the size limit
+        let fileSize: number;
         try {
           const stat = fs.statSync(fullPath);
           if (stat.size > MAX_FILE_SIZE_BYTES) continue;
+          fileSize = stat.size;
         } catch {
           continue;
         }
@@ -76,12 +85,13 @@ function collectFiles(rootDir: string, extensions?: string[]): string[] {
         }
 
         files.push(fullPath);
+        bytesProcessed += fileSize;
       }
     }
   }
 
   walk(rootDir);
-  return files;
+  return { files, bytesProcessed };
 }
 
 function searchFile(
@@ -134,6 +144,7 @@ export function searchCodebase(
     maxResults?: number;
   } = {},
 ): SearchResult {
+  const startTime = performance.now();
   const {
     contextLines = DEFAULT_CONTEXT_LINES,
     caseSensitive = false,
@@ -152,7 +163,7 @@ export function searchCodebase(
     throw new Error(`Invalid regex pattern: ${query}`);
   }
 
-  const files = collectFiles(rootDir, extensions);
+  const { files, bytesProcessed } = collectFiles(rootDir, extensions);
   const fileMatches: FileMatch[] = [];
   let totalMatches = 0;
   let truncated = false;
@@ -175,7 +186,15 @@ export function searchCodebase(
     }
   }
 
-  return { query, totalMatches, files: fileMatches, truncated };
+  const stats: UsageStats = {
+    filesScanned: files.length,
+    bytesProcessed,
+    matchesFound: totalMatches,
+    responseChars: 0,
+    durationMs: Math.round(performance.now() - startTime),
+  };
+
+  return { query, totalMatches, files: fileMatches, truncated, stats };
 }
 
 export function findFile(
@@ -187,9 +206,11 @@ export function findFile(
     maxResults?: number;
   } = {},
 ): FindFileResult {
+  const startTime = performance.now();
   const { exact = false, extensions, maxResults = 20 } = options;
   const lowerName = name.toLowerCase();
   const results: FoundFile[] = [];
+  let filesScanned = 0;
 
   function walk(dir: string): void {
     if (results.length >= maxResults) return;
@@ -216,6 +237,7 @@ export function findFile(
       } else if (entry.isFile()) {
         if (shouldIgnoreFile(fullPath)) continue;
         if (isGitignored(rootDir, relativePath)) continue;
+        filesScanned++;
 
         if (extensions && extensions.length > 0) {
           const ext = path.extname(entry.name).toLowerCase().replace(".", "");
@@ -239,7 +261,16 @@ export function findFile(
   }
 
   walk(rootDir);
-  return { files: results, totalFound: results.length };
+
+  const stats: UsageStats = {
+    filesScanned,
+    bytesProcessed: 0,
+    matchesFound: results.length,
+    responseChars: 0,
+    durationMs: Math.round(performance.now() - startTime),
+  };
+
+  return { files: results, totalFound: results.length, stats };
 }
 
 export function getFileStructure(
@@ -305,6 +336,8 @@ export function readFile(
   startLine?: number,
   endLine?: number,
 ): ReadFileResult {
+  const startTime = performance.now();
+
   // Resolve and validate path — prevent traversal attacks
   const absPath = path.resolve(rootDir, filePath);
   const normalizedRoot = path.resolve(rootDir);
@@ -344,6 +377,14 @@ export function readFile(
   const selectedLines = allLines.slice(start - 1, end);
   const truncated = !endLine && totalLines > MAX_READ_LINES;
 
+  const stats: UsageStats = {
+    filesScanned: 1,
+    bytesProcessed: stat.size,
+    matchesFound: 0,
+    responseChars: 0,
+    durationMs: Math.round(performance.now() - startTime),
+  };
+
   return {
     path: path.relative(rootDir, absPath),
     content: selectedLines.join("\n"),
@@ -352,6 +393,7 @@ export function readFile(
     endLine: Math.min(end, totalLines),
     truncated,
     sizeBytes: stat.size,
+    stats,
   };
 }
 
@@ -360,6 +402,7 @@ export function listFiles(
   pattern: string,
   maxResults: number = 100,
 ): ListFilesResult {
+  const startTime = performance.now();
   const ig = loadGitignore(rootDir);
 
   // Build ignore patterns from IGNORED_DIRS
@@ -379,10 +422,19 @@ export function listFiles(
   const truncated = filtered.length > maxResults;
   const capped = filtered.slice(0, maxResults);
 
+  const stats: UsageStats = {
+    filesScanned: files.length,
+    bytesProcessed: 0,
+    matchesFound: filtered.length,
+    responseChars: 0,
+    durationMs: Math.round(performance.now() - startTime),
+  };
+
   return {
     pattern,
     files: capped,
     totalFound: filtered.length,
     truncated,
+    stats,
   };
 }

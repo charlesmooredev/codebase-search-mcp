@@ -12,6 +12,7 @@ import {
   formatFileTree,
   formatReadFile,
   formatFileList,
+  formatUsageFooter,
 } from "./formatters.js";
 
 const READ_ONLY_ANNOTATIONS = {
@@ -71,7 +72,12 @@ Use this when you know a file's name (or part of it) but not its location.`,
         const result = findFile(rootDir, name, { exact, extensions, maxResults: max_results });
 
         if (result.totalFound === 0) {
-          return { content: [{ type: "text", text: `No files found matching: "${name}"` }] };
+          let text = `No files found matching: "${name}"`;
+          if (result.stats) {
+            result.stats.responseChars = text.length;
+            text += formatUsageFooter(result.stats);
+          }
+          return { content: [{ type: "text", text }] };
         }
 
         const lines = [
@@ -80,7 +86,13 @@ Use this when you know a file's name (or part of it) but not its location.`,
           ...result.files.map((f) => `  ${f.path}  (in ${f.directory})`),
         ];
 
-        return { content: [{ type: "text", text: lines.join("\n") }] };
+        let text = lines.join("\n");
+        if (result.stats) {
+          result.stats.responseChars = text.length;
+          text += formatUsageFooter(result.stats);
+        }
+
+        return { content: [{ type: "text", text }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { content: [{ type: "text", text: `Error finding file: ${message}` }], isError: true };
