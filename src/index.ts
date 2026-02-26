@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import path from "path";
 import fs from "fs";
+import path from "path";
 import { registerTools } from "./tools.js";
 
 function resolveRootDir(): string {
@@ -25,7 +25,7 @@ async function main(): Promise<void> {
 
   const server = new McpServer({
     name: "search-code-mcp",
-    version: "1.2.0",
+    version: "1.3.0",
   });
 
   registerTools(server, rootDir);
