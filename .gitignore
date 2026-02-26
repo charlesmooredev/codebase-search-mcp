@@ -1,4 +1,9 @@
 node_modules/
-dist/
 *.tsbuildinfo
 .DS_Store
+
+# Ignore tsc output, but keep the esbuild bundle
+dist/*.js
+dist/*.js.map
+dist/*.d.ts
+!dist/index.cjs
